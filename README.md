@@ -39,3 +39,19 @@ Les horoscopes sont récupérés à partir d’une **API externe**, puis sauvega
 - Consultation de l’**historique des horoscopes**
 - **Commentaires** sur les horoscopes
 - Recapitulatif sur l'exactitude des horoscopes
+
+
+# API for frontend
+
+POST /api/auth/register
+POST /api/auth/login
+POST /api/auth/logout
+GET /api/auth/me
+
+POST /api/horoscopes/generate
+GET /api/horoscopes
+GET /api/horoscopes/{horoscope_id}
+
+POST /api/horoscopes/{horoscope_id}/comments
+GET /api/horoscopes/{horoscope_id}/comments
+
