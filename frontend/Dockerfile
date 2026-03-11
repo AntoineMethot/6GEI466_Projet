@@ -1,6 +1,13 @@
-FROM nginx:alpine
+FROM python:3.11-slim
 
-COPY . /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+WORKDIR /app
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
 
 EXPOSE 80
+
+CMD ["python", "frontend.py"]
