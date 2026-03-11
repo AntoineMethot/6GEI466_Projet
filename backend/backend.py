@@ -1,4 +1,5 @@
 from flask import Flask, request, session
+from datetime import date, datetime
 from flask_restx import Api, Resource, fields
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -43,7 +44,8 @@ def serialize_user(user: dict) -> dict:
     return {
         "_id": str(user["_id"]),
         "name": user["name"],
-        "email": user["email"]
+        "email": user["email"],
+        "birthdate": user.get("birthdate")
     }
 
 
@@ -91,8 +93,10 @@ health_ns = api.namespace("", description="Health")
 register_model = api.model("RegisterRequest", {
     "name": fields.String(required=True, example="Antoine"),
     "email": fields.String(required=True, example="antoine@email.com"),
-    "password": fields.String(required=True, example="motdepasse123")
+    "password": fields.String(required=True, example="motdepasse123"),
+    "birthdate": fields.String(required=True, example="1990-01-01")
 })
+
 
 login_model = api.model("LoginRequest", {
     "email": fields.String(required=True, example="antoine@email.com"),
@@ -111,7 +115,9 @@ user_model = api.model("User", {
     "_id": fields.String(example="67d0a1b2c3d4e5f678901234"),
     "name": fields.String(example="Antoine"),
     "email": fields.String(example="antoine@email.com")
+    ,"birthdate": fields.String(example="1990-01-01")
 })
+
 
 auth_me_model = api.model("AuthMeResponse", {
     "authenticated": fields.Boolean(example=True),
@@ -119,8 +125,39 @@ auth_me_model = api.model("AuthMeResponse", {
 })
 
 generate_horoscope_model = api.model("GenerateHoroscopeRequest", {
-    "sign": fields.String(required=True, example="leo")
+    "birthdate": fields.String(required=True, example="1990-01-01")
 })
+
+
+def get_zodiac_sign(birth: date) -> str:
+    m = birth.month
+    d = birth.day
+    # Ranges inclusive
+    if (m == 3 and d >= 21) or (m == 4 and d <= 19):
+        return "aries"
+    if (m == 4 and d >= 20) or (m == 5 and d <= 20):
+        return "taurus"
+    if (m == 5 and d >= 21) or (m == 6 and d <= 20):
+        return "gemini"
+    if (m == 6 and d >= 21) or (m == 7 and d <= 22):
+        return "cancer"
+    if (m == 7 and d >= 23) or (m == 8 and d <= 22):
+        return "leo"
+    if (m == 8 and d >= 23) or (m == 9 and d <= 22):
+        return "virgo"
+    if (m == 9 and d >= 23) or (m == 10 and d <= 22):
+        return "libra"
+    if (m == 10 and d >= 23) or (m == 11 and d <= 21):
+        return "scorpio"
+    if (m == 11 and d >= 22) or (m == 12 and d <= 21):
+        return "sagittarius"
+    if (m == 12 and d >= 22) or (m == 1 and d <= 19):
+        return "capricorn"
+    if (m == 1 and d >= 20) or (m == 2 and d <= 18):
+        return "aquarius"
+    if (m == 2 and d >= 19) or (m == 3 and d <= 20):
+        return "pisces"
+    return "unknown"
 
 horoscope_model = api.model("Horoscope", {
     "_id": fields.String(example="67d0a1b2c3d4e5f678901235"),
@@ -171,9 +208,10 @@ class RegisterResource(Resource):
         name = data.get("name")
         email = data.get("email")
         password = data.get("password")
+        birthdate = data.get("birthdate")
 
-        if not name or not email or not password:
-            return {"error": "Name, email and password are required"}, 400
+        if not name or not email or not password or not birthdate:
+            return {"error": "Name, email, password and birthdate are required"}, 400
 
         if users_collection.find_one({"email": email}):
             return {"error": "User already exists"}, 400
@@ -181,6 +219,7 @@ class RegisterResource(Resource):
         user = {
             "name": name,
             "email": email,
+            "birthdate": birthdate,
             "password_hash": generate_password_hash(password)
         }
 
@@ -363,17 +402,25 @@ class UserMeResource(Resource):
 class GenerateHoroscopeResource(Resource):
     @api.expect(generate_horoscope_model, validate=True)
     @api.response(201, "Horoscope generated", horoscope_model)
-    @api.response(400, "Sign is required", error_model)
+    @api.response(400, "Birthdate is required or invalid", error_model)
     @api.response(401, "Unauthorized", error_model)
     def post(self):
         if not login_required():
             return {"error": "Unauthorized"}, 401
 
         data = request.get_json() or {}
-        sign = data.get("sign")
+        birthdate_str = data.get("birthdate")
 
-        if not sign:
-            return {"error": "Sign is required"}, 400
+        if not birthdate_str:
+            return {"error": "Birthdate is required"}, 400
+
+        try:
+            # Expecting ISO date YYYY-MM-DD
+            birth = datetime.fromisoformat(birthdate_str).date()
+        except Exception:
+            return {"error": "Invalid birthdate format (expected YYYY-MM-DD)"}, 400
+
+        sign = get_zodiac_sign(birth)
 
         horoscope = {
             "user_id": session["user_id"],

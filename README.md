@@ -2,6 +2,22 @@
 
 # Horoscope Web Application
 
+## Démarrage
+
+Pour démarrer le docker compose, se placer dans le root du projet (avec le docker-compose.yml) et exécuter:
+**docker compose up --build**
+
+Ceci démarre 3 containers localement:
+1. BD Port 27017
+2. Backend Port 5000
+3. Frontend Port 8080
+
+## Documentation Swagger
+
+localhost:5000/swagger
+
+Info sur toute les endpoints de lapi
+
 ## Description
 
 Cette application web permet aux utilisateurs de consulter leur **horoscope quotidien** via une architecture **frontend / backend**. Les utilisateurs se connectent grâce à un système **SSO (Single Sign-On)** avec un fournisseur externe (ex. Google ou Microsoft). Une fois authentifiés, ils peuvent générer leur horoscope selon leur signe astrologique, consulter l’historique de leurs horoscopes et laisser des commentaires.
@@ -43,15 +59,15 @@ Les horoscopes sont récupérés à partir d’une **API externe**, puis sauvega
 
 # API for frontend
 
-POST /api/auth/register
-POST /api/auth/login
-POST /api/auth/logout
-GET /api/auth/me
+- POST /api/auth/register
+- POST /api/auth/login
+- POST /api/auth/logout
+- GET /api/auth/me
 
-POST /api/horoscopes/generate
-GET /api/horoscopes
-GET /api/horoscopes/{horoscope_id}
+- POST /api/horoscopes/generate
+- GET /api/horoscopes
+- GET /api/horoscopes/{horoscope_id}
 
-POST /api/horoscopes/{horoscope_id}/comments
-GET /api/horoscopes/{horoscope_id}/comments
+- POST /api/horoscopes/{horoscope_id}/comments
+- GET /api/horoscopes/{horoscope_id}/comments
 
