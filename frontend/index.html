@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Horoscope App</title>
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+</head>
+<body class="bg-light">
+  <div class="container py-5">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h1 class="mb-4">Horoscope App</h1>
+
+        <h3>Register</h3>
+        <div class="row g-2 mb-3">
+          <div class="col-md-4">
+            <input id="register-name" class="form-control" placeholder="Name" />
+          </div>
+          <div class="col-md-4">
+            <input id="register-email" class="form-control" placeholder="Email" />
+          </div>
+          <div class="col-md-4">
+            <input id="register-password" type="password" class="form-control" placeholder="Password" />
+          </div>
+        </div>
+        <button class="btn btn-primary mb-4" onclick="register()">Register</button>
+
+        <h3>Login</h3>
+        <div class="row g-2 mb-3">
+          <div class="col-md-6">
+            <input id="login-email" class="form-control" placeholder="Email" />
+          </div>
+          <div class="col-md-6">
+            <input id="login-password" type="password" class="form-control" placeholder="Password" />
+          </div>
+        </div>
+        <button class="btn btn-success mb-4" onclick="login()">Login</button>
+        <button class="btn btn-outline-secondary mb-4" onclick="logout()">Logout</button>
+
+        <h3>Current User</h3>
+        <button class="btn btn-info mb-3" onclick="me()">Check Session</button>
+        <pre id="me-result" class="bg-white p-3 border rounded"></pre>
+
+        <h3>Generate Horoscope</h3>
+        <div class="row g-2 mb-3">
+          <div class="col-md-6">
+            <input id="sign" class="form-control" placeholder="Sign (leo, aries, etc.)" />
+          </div>
+          <div class="col-md-6">
+            <button class="btn btn-warning w-100" onclick="generateHoroscope()">Generate</button>
+          </div>
+        </div>
+
+        <h3>My Horoscopes</h3>
+        <button class="btn btn-dark mb-3" onclick="loadHoroscopes()">Load Horoscopes</button>
+        <pre id="horoscopes-result" class="bg-white p-3 border rounded"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "http://localhost:5000";
+
+    async function register() {
+      const res = await fetch(`${API_BASE}/api/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name: document.getElementById("register-name").value,
+          email: document.getElementById("register-email").value,
+          password: document.getElementById("register-password").value
+        })
+      });
+
+      const data = await res.json();
+      alert(JSON.stringify(data, null, 2));
+    }
+
+    async function login() {
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          email: document.getElementById("login-email").value,
+          password: document.getElementById("login-password").value
+        })
+      });
+
+      const data = await res.json();
+      alert(JSON.stringify(data, null, 2));
+    }
+
+    async function logout() {
+      const res = await fetch(`${API_BASE}/api/auth/logout`, {
+        method: "POST",
+        credentials: "include"
+      });
+
+      const data = await res.json();
+      alert(JSON.stringify(data, null, 2));
+    }
+
+    async function me() {
+      const res = await fetch(`${API_BASE}/api/auth/me`, {
+        credentials: "include"
+      });
+
+      const data = await res.json();
+      document.getElementById("me-result").textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function generateHoroscope() {
+      const sign = document.getElementById("sign").value;
+
+      const res = await fetch(`${API_BASE}/api/horoscopes/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ sign })
+      });
+
+      const data = await res.json();
+      alert(JSON.stringify(data, null, 2));
+    }
+
+    async function loadHoroscopes() {
+      const res = await fetch(`${API_BASE}/api/horoscopes`, {
+        credentials: "include"
+      });
+
+      const data = await res.json();
+      document.getElementById("horoscopes-result").textContent = JSON.stringify(data, null, 2);
+    }
+  </script>
+</body>
+</html>
