@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+
+{% block title %}Inscription | AstroDaily{% endblock %}
+
+{% block content %}
+<section class="auth-shell">
+  <div class="lang-toggle auth-lang" role="group" aria-label="Choix de langue">
+    <button id="lang-fr" class="lang-btn" type="button">FR</button>
+    <button id="lang-en" class="lang-btn" type="button">EN</button>
+  </div>
+
+  <div class="hero-mark">*</div>
+  <h1 class="hero-title">AstroDaily</h1>
+  <p class="hero-subtitle">Decouvrez votre destinee</p>
+
+  <div class="card auth-card">
+    <h2>S'inscrire</h2>
+
+    <form id="register-form" class="form-grid" novalidate>
+      <label for="register-name">Nom complet</label>
+      <input id="register-name" name="name" type="text" placeholder="Jean Dupont" required />
+
+      <label for="register-email">Adresse courriel</label>
+      <input id="register-email" name="email" type="email" placeholder="exemple@email.com" required />
+
+      <label for="register-password">Mot de passe</label>
+      <input id="register-password" name="password" type="password" placeholder="******" minlength="8" required />
+
+      <label for="register-birthdate">Date de naissance</label>
+      <input id="register-birthdate" name="birthdate" type="date" required />
+      <p class="helper-text">Votre signe astrologique sera determine automatiquement.</p>
+
+      <button id="register-submit" class="btn btn-primary" type="submit">S'inscrire</button>
+    </form>
+
+    <a class="auth-link" href="{{ url_for('login_page') }}">Deja un compte ? Se connecter</a>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+{% endblock %}

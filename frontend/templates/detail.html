@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block title %}Detail Horoscope | AstroDaily{% endblock %}
+
+{% set show_header = true %}
+
+{% block content %}
+<section class="content-shell">
+  <a class="back-link" href="{{ url_for('dashboard_page') }}">Retour</a>
+
+  <article class="card detail-card">
+    <p id="detail-meta" class="daily-meta">Chargement...</p>
+    <p id="detail-content" class="daily-content"></p>
+  </article>
+
+  <article class="card comments-card">
+    <h2>Commentaires</h2>
+    <div id="detail-comments" class="detail-comments"></div>
+
+    <form id="detail-comment-form" class="comment-form" novalidate>
+      <input id="detail-comment-input" type="text" placeholder="Ajouter un commentaire..." maxlength="500" required />
+      <button class="btn btn-primary" type="submit">Publier</button>
+    </form>
+  </article>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>window.HOROSCOPE_ID = {{ horoscope_id | tojson }};</script>
+<script src="{{ url_for('static', filename='js/detail.js') }}"></script>
+{% endblock %}

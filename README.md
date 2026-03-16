@@ -32,13 +32,13 @@ PowerShell:
 
 localhost:5000/swagger
 
-Info sur toute les endpoints de lapi
+Info sur toutes les endpoints de l'API
 
 ## Description
 
-Cette application web permet aux utilisateurs de consulter leur **horoscope quotidien** via une architecture **frontend / backend**. Les utilisateurs se connectent grâce à un système **SSO (Single Sign-On)** avec un fournisseur externe (ex. Google ou Microsoft). Une fois authentifiés, ils peuvent générer leur horoscope selon leur signe astrologique, consulter l’historique de leurs horoscopes et laisser des commentaires.
+Cette application web permet aux utilisateurs de consulter leur **horoscope quotidien** via une architecture **frontend / backend**. Une fois authentifies, ils peuvent generer leur horoscope selon leur signe astrologique, consulter l'historique de leurs horoscopes et laisser des commentaires.
 
-Les horoscopes sont récupérés à partir d’une **API externe**, puis sauvegardés dans une **base de données NoSQL** avec les commentaires associés.
+Les horoscopes sont recuperes a partir d'une **API externe (AstroAPI)**, puis sauvegardes dans une **base de donnees NoSQL (MongoDB)** avec les commentaires associes.
 
 ---
 
@@ -47,30 +47,67 @@ Les horoscopes sont récupérés à partir d’une **API externe**, puis sauvega
 **Frontend**
 - HTML
 - CSS
-- Bootstrap
 - JavaScript
+- Flask Templates (Jinja2)
 
 **Backend**
 - Python
-- Flask (API REST)
+- Flask + Flask-RESTX (API REST)
 
 **Authentification**
-- OAuth / OpenID Connect (SSO)
+- Session Flask via cookie HTTP
 
 **Base de données**
-- NoSQL (ex. MongoDB)
+- MongoDB
 
 ---
 
 ## Fonctionnalités
 
-- Connexion via **SSO**
+- Connexion/inscription locale (email + mot de passe)
 - Génération d’horoscope par **signe astrologique**
-- Récupération des données via **API externe**
+- Recuperation des donnees via **AstroAPI**
 - Sauvegarde des horoscopes dans la base de données
 - Consultation de l’**historique des horoscopes**
 - **Commentaires** sur les horoscopes
-- Recapitulatif sur l'exactitude des horoscopes
+
+## Ce qui a ete fait (branche `yasmine`)
+
+### Backend
+
+- Integration de l'endpoint AstroAPI `POST /api/v3/horoscope/sign/daily`
+- Calcul automatique du signe astrologique depuis la date de naissance
+- Generation de l'horoscope avec date du jour cote serveur
+- Stockage enrichi: `content`, `date`, `overall_rating`, `tips`, `raw_response`
+- Gestion des erreurs externes: timeout, 401, 429, erreurs 5xx
+- Variables d'environnement pour la configuration API:
+	- `ASTROLOGY_API_KEY`
+	- `ASTROLOGY_API_BASE_URL`
+	- `ASTROLOGY_API_TIMEOUT_SECONDS`
+
+### Frontend
+
+- templates Flask/Jinja2:
+	- `login.html`
+	- `register.html`
+	- `dashboard.html`
+	- `detail.html`
+	- `base.html`
+- Ajout d'une structure statique standard:
+	- `frontend/static/css/style.css`
+	- `frontend/static/js/common.js`
+	- `frontend/static/js/auth.js`
+	- `frontend/static/js/dashboard.js`
+	- `frontend/static/js/detail.js`
+
+### Securite
+
+- Cle API jamais committe dans le code source
+- Fichier `.env` ignore par Git
+- Validation d'autorisation backend sur les commentaires:
+	- commentaire autorise uniquement sur les horoscopes du compte connecte
+	- lecture des commentaires limitee aux horoscopes du compte connecte
+- Protection front contre l'injection HTML dans les commentaires ( via `textContent`et `tojson`)
 
 
 # API for frontend
@@ -82,6 +119,8 @@ Les horoscopes sont récupérés à partir d’une **API externe**, puis sauvega
 
 - POST /api/horoscopes/generate
 - GET /api/horoscopes
+- GET /api/horoscopes/history
+- GET /api/horoscopes/search
 - GET /api/horoscopes/{horoscope_id}
 
 - POST /api/horoscopes/{horoscope_id}/comments

@@ -535,7 +535,7 @@ class GenerateHoroscopeResource(Resource):
             "overall_rating": horoscope_api_data.get("overall_rating"),
             "tips": tips,
             "source": "astrology-api",
-            # On conserve la reponse brute pour enrichir le frontend plus tard sans changer le schema.
+            # Conservation de la reponse brute pour enrichissement futur sans changement de schema.
             "raw_response": horoscope_api_data
         }
 
@@ -646,9 +646,24 @@ class HoroscopeCommentsResource(Resource):
     @api.response(201, "Comment created", comment_model)
     @api.response(400, "Content is required", error_model)
     @api.response(401, "Unauthorized", error_model)
+    @api.response(404, "Horoscope not found", error_model)
     def post(self, horoscope_id):
         if not login_required():
             return {"error": "Unauthorized"}, 401
+
+        # Validation d'ID pour eviter les erreurs MongoDB et les requetes mal formees.
+        try:
+            horoscope_obj_id = ObjectId(horoscope_id)
+        except InvalidId:
+            return {"error": "Invalid horoscope id"}, 400
+
+        # Controle d'autorisation: commentaire reserve aux horoscopes du compte connecte.
+        horoscope = horoscopes_collection.find_one({
+            "_id": horoscope_obj_id,
+            "user_id": session["user_id"]
+        })
+        if not horoscope:
+            return {"error": "Horoscope not found"}, 404
 
         data = request.get_json() or {}
         content = data.get("content")
@@ -668,7 +683,27 @@ class HoroscopeCommentsResource(Resource):
         return serialize_comment(comment), 201
 
     @api.response(200, "Comments list", [comment_model])
+    @api.response(400, "Invalid horoscope id", error_model)
+    @api.response(401, "Unauthorized", error_model)
+    @api.response(404, "Horoscope not found", error_model)
     def get(self, horoscope_id):
+        if not login_required():
+            return {"error": "Unauthorized"}, 401
+
+        # Validation d'ID pour eviter les erreurs MongoDB et les requetes mal formees.
+        try:
+            horoscope_obj_id = ObjectId(horoscope_id)
+        except InvalidId:
+            return {"error": "Invalid horoscope id"}, 400
+
+        # Controle d'autorisation: lecture reservee aux commentaires du compte connecte.
+        horoscope = horoscopes_collection.find_one({
+            "_id": horoscope_obj_id,
+            "user_id": session["user_id"]
+        })
+        if not horoscope:
+            return {"error": "Horoscope not found"}, 404
+
         results = []
 
         for comment in comments_collection.find({"horoscope_id": horoscope_id}):
