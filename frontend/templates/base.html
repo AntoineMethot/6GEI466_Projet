@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="{{ page_lang|default('fr') }}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}AstroDaily{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body class="app-body">
+  {% if show_header|default(false) %}
+  <header class="topbar">
+    <div class="brand-wrap">
+      <div class="brand-icon">*</div>
+      <a class="brand-name" href="{{ url_for('dashboard_page') }}">AstroDaily</a>
+    </div>
+
+    <div class="topbar-right">
+      <div class="lang-toggle" role="group" aria-label="Choix de langue">
+        <button id="lang-fr" class="lang-btn" type="button">FR</button>
+        <button id="lang-en" class="lang-btn" type="button">EN</button>
+      </div>
+      <button id="logout-btn" class="btn btn-pill" type="button">Deconnexion</button>
+    </div>
+  </header>
+  {% endif %}
+
+  <main class="app-main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <div id="app-message" class="app-message" aria-live="polite"></div>
+
+  <script src="{{ url_for('static', filename='js/common.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+
+{% block title %}Connexion | AstroDaily{% endblock %}
+
+{% block content %}
+<section class="auth-shell">
+  <div class="lang-toggle auth-lang" role="group" aria-label="Choix de langue">
+    <button id="lang-fr" class="lang-btn" type="button">FR</button>
+    <button id="lang-en" class="lang-btn" type="button">EN</button>
+  </div>
+
+  <div class="hero-mark">*</div>
+  <h1 class="hero-title">AstroDaily</h1>
+  <p class="hero-subtitle">Decouvrez votre destinee</p>
+
+  <div class="card auth-card">
+    <h2>Se connecter</h2>
+
+    <form id="login-form" class="form-grid" novalidate>
+      <label for="login-email">Adresse courriel</label>
+      <input id="login-email" name="email" type="email" placeholder="exemple@email.com" required />
+
+      <label for="login-password">Mot de passe</label>
+      <input id="login-password" name="password" type="password" placeholder="******" required />
+
+      <button id="login-submit" class="btn btn-primary" type="submit">Se connecter</button>
+    </form>
+
+    <a class="auth-link" href="{{ url_for('register_page') }}">Creer un compte</a>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+{% endblock %}
