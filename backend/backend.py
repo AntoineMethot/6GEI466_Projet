@@ -5,6 +5,7 @@ from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
+import requests
 import os
 
 app = Flask(__name__)
@@ -35,6 +36,12 @@ users_collection = db["users"]
 horoscopes_collection = db["horoscopes"]
 comments_collection = db["comments"]
 
+# La configuration de l'API externe vient des variables d'environnement
+# pour ne jamais versionner de secret dans le depot.
+astrology_api_base_url = os.getenv("ASTROLOGY_API_BASE_URL", "https://api.astrology-api.io")
+astrology_api_key = os.getenv("ASTROLOGY_API_KEY", "")
+astrology_api_timeout_seconds = float(os.getenv("ASTROLOGY_API_TIMEOUT_SECONDS", "10"))
+
 
 def login_required() -> bool:
     return "user_id" in session
@@ -54,7 +61,12 @@ def serialize_horoscope(horoscope: dict) -> dict:
         "_id": str(horoscope["_id"]),
         "user_id": horoscope["user_id"],
         "sign": horoscope["sign"],
-        "content": horoscope["content"]
+        "content": horoscope["content"],
+        "date": horoscope.get("date"),
+        "language": horoscope.get("language"),
+        "tradition": horoscope.get("tradition"),
+        "overall_rating": horoscope.get("overall_rating"),
+        "tips": horoscope.get("tips", [])
     }
 
 
@@ -125,7 +137,9 @@ auth_me_model = api.model("AuthMeResponse", {
 })
 
 generate_horoscope_model = api.model("GenerateHoroscopeRequest", {
-    "birthdate": fields.String(required=True, example="1990-01-01")
+    "birthdate": fields.String(required=True, example="1990-01-01"),
+    "language": fields.String(required=False, example="en"),
+    "tradition": fields.String(required=False, example="universal")
 })
 
 
@@ -159,11 +173,67 @@ def get_zodiac_sign(birth: date) -> str:
         return "pisces"
     return "unknown"
 
+
+def fetch_daily_horoscope(sign: str, target_date: str, language: str, tradition: str):
+    if not astrology_api_key:
+        return None, {"error": "Astrology API key is not configured"}, 500
+
+    endpoint = f"{astrology_api_base_url.rstrip('/')}/api/v3/horoscope/sign/daily"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {astrology_api_key}"
+    }
+    payload = {
+        "sign": sign.title(),
+        "date": target_date,
+        "language": language,
+        "tradition": tradition
+    }
+
+    try:
+        # Le timeout evite de bloquer l'API locale si le fournisseur externe repond lentement.
+        response = requests.post(
+            endpoint,
+            headers=headers,
+            json=payload,
+            timeout=astrology_api_timeout_seconds,
+        )
+    except requests.Timeout:
+        return None, {"error": "Astrology API request timed out"}, 504
+    except requests.RequestException:
+        return None, {"error": "Unable to reach Astrology API"}, 502
+
+    if response.status_code == 401:
+        return None, {"error": "Astrology API unauthorized. Check API key."}, 502
+    if response.status_code == 429:
+        return None, {"error": "Astrology API rate limit reached"}, 429
+    if response.status_code >= 500:
+        return None, {"error": "Astrology API server error"}, 502
+    if response.status_code >= 400:
+        return None, {"error": "Astrology API rejected request", "details": response.text}, 400
+
+    try:
+        payload = response.json()
+    except ValueError:
+        return None, {"error": "Astrology API returned invalid JSON"}, 502
+
+    # La reponse est enveloppee dans un objet 'data'
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not data:
+        return None, {"error": "Astrology API response missing 'data' field"}, 502
+
+    return data, None, 200
+
 horoscope_model = api.model("Horoscope", {
     "_id": fields.String(example="67d0a1b2c3d4e5f678901235"),
     "user_id": fields.String(example="67d0a1b2c3d4e5f678901234"),
     "sign": fields.String(example="leo"),
-    "content": fields.String(example="Today is a good day for leo.")
+    "content": fields.String(example="Today's energy supports bold initiatives and creative projects."),
+    "date": fields.String(example="2026-02-13"),
+    "language": fields.String(example="en"),
+    "tradition": fields.String(example="universal"),
+    "overall_rating": fields.Integer(example=4),
+    "tips": fields.List(fields.String, example=["Initiate important conversations"])
 })
 
 comment_create_model = api.model("CreateCommentRequest", {
@@ -366,6 +436,8 @@ class UserMeResource(Resource):
         if user is None:
             return {"error": "User not found"}, 404
 
+        return serialize_user(user), 200
+
     @api.response(200, "User deleted", message_model)
     @api.response(400, "Invalid session", error_model)
     @api.response(401, "Unauthorized", error_model)
@@ -404,6 +476,10 @@ class GenerateHoroscopeResource(Resource):
     @api.response(201, "Horoscope generated", horoscope_model)
     @api.response(400, "Birthdate is required or invalid", error_model)
     @api.response(401, "Unauthorized", error_model)
+    @api.response(429, "External API rate limit reached", error_model)
+    @api.response(500, "Server configuration error", error_model)
+    @api.response(502, "External API communication error", error_model)
+    @api.response(504, "External API timeout", error_model)
     def post(self):
         if not login_required():
             return {"error": "Unauthorized"}, 401
@@ -421,11 +497,46 @@ class GenerateHoroscopeResource(Resource):
             return {"error": "Invalid birthdate format (expected YYYY-MM-DD)"}, 400
 
         sign = get_zodiac_sign(birth)
+        if sign == "unknown":
+            return {"error": "Unable to determine zodiac sign from birthdate"}, 400
+
+        language = data.get("language", "en")
+        tradition = data.get("tradition", "universal")
+        # L'horoscope est genere pour aujourd'hui, le signe vient de la date de naissance.
+        target_date = date.today().isoformat()
+
+        horoscope_api_data, api_error, api_status = fetch_daily_horoscope(
+            sign=sign,
+            target_date=target_date,
+            language=language,
+            tradition=tradition,
+        )
+        if api_error:
+            return api_error, api_status
+
+        # Le texte principal est dans 'overall_theme', les conseils dans 'life_areas'
+        horoscope_text = horoscope_api_data.get("overall_theme")
+        if not horoscope_text:
+            return {"error": "Astrology API response missing 'overall_theme' field"}, 502
+
+        tips = [
+            area["prediction"]
+            for area in horoscope_api_data.get("life_areas", [])
+            if area.get("prediction")
+        ]
 
         horoscope = {
             "user_id": session["user_id"],
             "sign": sign,
-            "content": f"Today is a good day for {sign}."
+            "content": horoscope_text,
+            "date": horoscope_api_data.get("date", target_date),
+            "language": language,
+            "tradition": tradition,
+            "overall_rating": horoscope_api_data.get("overall_rating"),
+            "tips": tips,
+            "source": "astrology-api",
+            # On conserve la reponse brute pour enrichir le frontend plus tard sans changer le schema.
+            "raw_response": horoscope_api_data
         }
 
         result = horoscopes_collection.insert_one(horoscope)

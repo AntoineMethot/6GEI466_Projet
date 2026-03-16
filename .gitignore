@@ -30,6 +30,8 @@ venv/
 ENV/
 env/
 .env/
+.env
+.env.*
 .venv/
 env.bak/
 venv.bak/

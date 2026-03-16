@@ -12,6 +12,9 @@ services:
       - FLASK_SECRET_KEY=super_secret_key_change_me
       - MONGO_URI=mongodb://mongodb:27017/
       - MONGO_DB_NAME=horoscope_app
+      - ASTROLOGY_API_BASE_URL=https://api.astrology-api.io
+      - ASTROLOGY_API_KEY=${ASTROLOGY_API_KEY:-}
+      - ASTROLOGY_API_TIMEOUT_SECONDS=10
     depends_on:
       - mongodb
     volumes:

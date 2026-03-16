@@ -12,6 +12,22 @@ Ceci démarre 3 containers localement:
 2. Backend Port 5000
 3. Frontend Port 8080
 
+### Configuration AstroAPI
+
+Le backend lit la cle API depuis la variable d'environnement `ASTROLOGY_API_KEY`.
+Creer un fichier `.env` a la racine du projet:
+
+`ASTROLOGY_API_KEY=VOTRE_CLE_API`
+
+Puis lancer Docker Compose:
+
+`docker compose up --build`
+
+Alternative (session PowerShell seulement):
+
+PowerShell:
+`$env:ASTROLOGY_API_KEY="VOTRE_CLE_API"`
+
 ## Documentation Swagger
 
 localhost:5000/swagger
