@@ -1,4 +1,3 @@
-# Travail de la séance — 17 mars 2026
 
 ## Vue d'ensemble
 
