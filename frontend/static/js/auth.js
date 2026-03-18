@@ -1,4 +1,4 @@
-function validateBirthdate(birthdate) {
+﻿function validateBirthdate(birthdate) {
   // Validation de date: blocage des dates futures avant l'appel backend.
   if (!birthdate) return false;
   const parsed = new Date(birthdate);
@@ -13,17 +13,17 @@ async function handleLogin(event) {
   const password = document.getElementById("login-password")?.value;
 
   if (!email || !password) {
-    showMessage("Veuillez remplir tous les champs.", "error");
+    showMessage(t("connexionChampsManquants"), "error");
     return;
   }
 
   try {
     // Session HTTP geree via cookie cote backend.
     await requestJSON("/api/auth/login", "POST", { email, password });
-    showMessage("Connexion reussie.", "success");
+    showMessage(t("connexionReussie"), "success");
     window.location.href = "/dashboard";
   } catch (error) {
-    showMessage(error.message || "Connexion echouee.", "error");
+    showMessage(error.message || t("connexionEchouee"), "error");
   }
 }
 
@@ -36,17 +36,17 @@ async function handleRegister(event) {
   const birthdate = document.getElementById("register-birthdate")?.value;
 
   if (!name || !email || !password || !birthdate) {
-    showMessage("Tous les champs sont obligatoires.", "error");
+    showMessage(t("inscriptionChampsManquants"), "error");
     return;
   }
 
   if (password.length < 8) {
-    showMessage("Le mot de passe doit contenir au moins 8 caracteres.", "error");
+    showMessage(t("inscriptionMotDePasseFaible"), "error");
     return;
   }
 
   if (!validateBirthdate(birthdate)) {
-    showMessage("La date de naissance est invalide.", "error");
+    showMessage(t("inscriptionDateNaissanceInvalide"), "error");
     return;
   }
 
@@ -54,10 +54,10 @@ async function handleRegister(event) {
     // UX: connexion automatique activee juste apres l'inscription.
     await requestJSON("/api/auth/register", "POST", { name, email, password, birthdate });
     await requestJSON("/api/auth/login", "POST", { email, password });
-    showMessage("Compte cree avec succes.", "success");
+    showMessage(t("inscriptionReussie"), "success");
     window.location.href = "/dashboard";
   } catch (error) {
-    showMessage(error.message || "Inscription echouee.", "error");
+    showMessage(error.message || t("inscriptionEchouee"), "error");
   }
 }
 
@@ -68,3 +68,4 @@ document.addEventListener("DOMContentLoaded", () => {
   if (loginForm) loginForm.addEventListener("submit", handleLogin);
   if (registerForm) registerForm.addEventListener("submit", handleRegister);
 });
+

@@ -1,10 +1,13 @@
 from flask import Flask, request, session
 from datetime import date, datetime
 from flask_restx import Api, Resource, fields
-from pymongo import MongoClient
+from pymongo import MongoClient, ASCENDING
+from pymongo.errors import DuplicateKeyError
 from werkzeug.security import generate_password_hash, check_password_hash
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
+from apscheduler.schedulers.background import BackgroundScheduler
+import atexit
 import requests
 import os
 
@@ -35,12 +38,75 @@ db = client[mongo_db_name]
 users_collection = db["users"]
 horoscopes_collection = db["horoscopes"]
 comments_collection = db["comments"]
+# Cache quotidien partagé : 12 signes × 2 langues, pré-chargés chaque matin par le scheduler.
+daily_cache_collection = db["daily_horoscopes_cache"]
+
+
+def _deduplicate_horoscopes_for_unique_index():
+    """Supprime les doublons user_id+date en conservant le document le plus récent."""
+    duplicates = horoscopes_collection.aggregate([
+        {
+            "$group": {
+                "_id": {"user_id": "$user_id", "date": "$date"},
+                "ids": {"$push": "$_id"},
+                "count": {"$sum": 1}
+            }
+        },
+        {"$match": {"count": {"$gt": 1}}}
+    ])
+
+    total_deleted = 0
+    for group in duplicates:
+        ids = group.get("ids", [])
+        if len(ids) < 2:
+            continue
+
+        keep_id = max(ids)
+        delete_ids = [doc_id for doc_id in ids if doc_id != keep_id]
+        if not delete_ids:
+            continue
+
+        result = horoscopes_collection.delete_many({"_id": {"$in": delete_ids}})
+        total_deleted += result.deleted_count
+
+    if total_deleted > 0:
+        app.logger.warning(f"[startup] {total_deleted} doublons horoscopes supprimes pour creer l'index unique")
+
+
+# Index unique pour éviter les doublons dans le cache et dans l'historique utilisateur.
+daily_cache_collection.create_index(
+    [("sign", ASCENDING), ("language", ASCENDING), ("date", ASCENDING)],
+    unique=True
+)
+try:
+    horoscopes_collection.create_index(
+        [("user_id", ASCENDING), ("date", ASCENDING)],
+        unique=True,
+        sparse=False
+    )
+except DuplicateKeyError:
+    # Migration de sécurité: si des doublons historiques existent déjà,
+    # on les supprime puis on retente la création de l'index unique.
+    _deduplicate_horoscopes_for_unique_index()
+    horoscopes_collection.create_index(
+        [("user_id", ASCENDING), ("date", ASCENDING)],
+        unique=True,
+        sparse=False
+    )
 
 # La configuration de l'API externe vient des variables d'environnement
 # pour ne jamais versionner de secret dans le depot.
 astrology_api_base_url = os.getenv("ASTROLOGY_API_BASE_URL", "https://api.astrology-api.io")
 astrology_api_key = os.getenv("ASTROLOGY_API_KEY", "")
 astrology_api_timeout_seconds = float(os.getenv("ASTROLOGY_API_TIMEOUT_SECONDS", "10"))
+
+# Les 12 signes du zodiaque et les langues supportées.
+ZODIAC_SIGNS = [
+    "aries", "taurus", "gemini", "cancer", "leo", "virgo",
+    "libra", "scorpio", "sagittarius", "capricorn", "aquarius", "pisces"
+]
+SUPPORTED_LANGUAGES = ["fr", "en"]
+DEFAULT_TRADITION = "universal"
 
 
 def login_required() -> bool:
@@ -66,8 +132,24 @@ def serialize_horoscope(horoscope: dict) -> dict:
         "language": horoscope.get("language"),
         "tradition": horoscope.get("tradition"),
         "overall_rating": horoscope.get("overall_rating"),
-        "tips": horoscope.get("tips", [])
+        "tips": horoscope.get("tips", []),
+        "vote": horoscope.get("vote"),
+        "can_vote": _can_vote(horoscope)
     }
+
+
+def _can_vote(horoscope: dict) -> bool:
+    # Le vote est possible uniquement après la fin de la journée concernée.
+    if horoscope.get("vote") is not None:
+        return False
+    horoscope_date_str = horoscope.get("date")
+    if not horoscope_date_str:
+        return False
+    try:
+        h_date = date.fromisoformat(str(horoscope_date_str)[:10])
+        return h_date < date.today()
+    except Exception:
+        return False
 
 
 def serialize_comment(comment: dict) -> dict:
@@ -224,6 +306,66 @@ def fetch_daily_horoscope(sign: str, target_date: str, language: str, tradition:
 
     return data, None, 200
 
+
+def prefetch_daily_horoscopes():
+    """Pré-charge les horoscopes de tous les signes pour aujourd'hui (FR + EN).
+    Appelé au démarrage et chaque matin par le scheduler APScheduler.
+    """
+    today = date.today().isoformat()
+    app.logger.info(f"[scheduler] Début du prefetch pour {today}")
+
+    for sign in ZODIAC_SIGNS:
+        for language in SUPPORTED_LANGUAGES:
+            # Entrée déjà en cache : aucun appel externe nécessaire.
+            if daily_cache_collection.find_one({"sign": sign, "language": language, "date": today}):
+                continue
+
+            api_data, api_error, _ = fetch_daily_horoscope(sign, today, language, DEFAULT_TRADITION)
+            if api_error:
+                app.logger.warning(f"[scheduler] Échec prefetch {sign}/{language}: {api_error}")
+                continue
+
+            horoscope_text = api_data.get("overall_theme")
+            if not horoscope_text:
+                app.logger.warning(f"[scheduler] overall_theme manquant pour {sign}/{language}")
+                continue
+
+            tips = [
+                area["prediction"]
+                for area in api_data.get("life_areas", [])
+                if area.get("prediction")
+            ]
+
+            cache_doc = {
+                "sign": sign,
+                "language": language,
+                "date": api_data.get("date", today),
+                "content": horoscope_text,
+                "overall_rating": api_data.get("overall_rating"),
+                "tips": tips,
+                "raw_response": api_data
+            }
+
+            try:
+                daily_cache_collection.insert_one(cache_doc)
+                app.logger.info(f"[scheduler] Cached {sign}/{language}/{today}")
+            except Exception as exc:
+                app.logger.warning(f"[scheduler] Insert cache {sign}/{language}: {exc}")
+
+    app.logger.info(f"[scheduler] Prefetch terminé pour {today}")
+
+
+# Démarrage du scheduler APScheduler en arrière-plan.
+# Tache quotidienne à 6h du matin + exécution immédiate au démarrage.
+_scheduler = BackgroundScheduler()
+_scheduler.add_job(prefetch_daily_horoscopes, "cron", hour=6, minute=0)
+_scheduler.start()
+atexit.register(lambda: _scheduler.shutdown(wait=False))
+
+# Prefetch initial au démarrage du serveur (utile si le container redémarre en journée).
+prefetch_daily_horoscopes()
+
+
 horoscope_model = api.model("Horoscope", {
     "_id": fields.String(example="67d0a1b2c3d4e5f678901235"),
     "user_id": fields.String(example="67d0a1b2c3d4e5f678901234"),
@@ -233,7 +375,13 @@ horoscope_model = api.model("Horoscope", {
     "language": fields.String(example="en"),
     "tradition": fields.String(example="universal"),
     "overall_rating": fields.Integer(example=4),
-    "tips": fields.List(fields.String, example=["Initiate important conversations"])
+    "tips": fields.List(fields.String, example=["Initiate important conversations"]),
+    "vote": fields.String(example=None),
+    "can_vote": fields.Boolean(example=False)
+})
+
+vote_model = api.model("VoteRequest", {
+    "vote": fields.String(required=True, enum=["accurate", "inaccurate"], example="accurate")
 })
 
 comment_create_model = api.model("CreateCommentRequest", {
@@ -473,7 +621,8 @@ class UserMeResource(Resource):
 @horoscopes_ns.route("/generate")
 class GenerateHoroscopeResource(Resource):
     @api.expect(generate_horoscope_model, validate=True)
-    @api.response(201, "Horoscope generated", horoscope_model)
+    @api.response(200, "Horoscope du jour deja consulte (retourne l'existant)", horoscope_model)
+    @api.response(201, "Horoscope genere et enregistre", horoscope_model)
     @api.response(400, "Birthdate is required or invalid", error_model)
     @api.response(401, "Unauthorized", error_model)
     @api.response(429, "External API rate limit reached", error_model)
@@ -491,7 +640,6 @@ class GenerateHoroscopeResource(Resource):
             return {"error": "Birthdate is required"}, 400
 
         try:
-            # Expecting ISO date YYYY-MM-DD
             birth = datetime.fromisoformat(birthdate_str).date()
         except Exception:
             return {"error": "Invalid birthdate format (expected YYYY-MM-DD)"}, 400
@@ -500,49 +648,71 @@ class GenerateHoroscopeResource(Resource):
         if sign == "unknown":
             return {"error": "Unable to determine zodiac sign from birthdate"}, 400
 
-        language = data.get("language", "en")
-        tradition = data.get("tradition", "universal")
-        # L'horoscope est genere pour aujourd'hui, le signe vient de la date de naissance.
-        target_date = date.today().isoformat()
+        language = data.get("language", "fr")
+        tradition = data.get("tradition", DEFAULT_TRADITION)
+        today = date.today().isoformat()
 
-        horoscope_api_data, api_error, api_status = fetch_daily_horoscope(
-            sign=sign,
-            target_date=target_date,
-            language=language,
-            tradition=tradition,
-        )
-        if api_error:
-            return api_error, api_status
+        # Limite : un seul horoscope par utilisateur par jour.
+        # Retourne l'existant sans rappeler l'API externe.
+        existing = horoscopes_collection.find_one({"user_id": session["user_id"], "date": today})
+        if existing:
+            serialized = serialize_horoscope(existing)
+            serialized["_alreadyToday"] = True
+            return serialized, 200
 
-        # Le texte principal est dans 'overall_theme', les conseils dans 'life_areas'
-        horoscope_text = horoscope_api_data.get("overall_theme")
-        if not horoscope_text:
-            return {"error": "Astrology API response missing 'overall_theme' field"}, 502
+        # Recherche dans le cache pré-chargé par le scheduler.
+        cached = daily_cache_collection.find_one({"sign": sign, "language": language, "date": today})
 
-        tips = [
-            area["prediction"]
-            for area in horoscope_api_data.get("life_areas", [])
-            if area.get("prediction")
-        ]
+        if cached:
+            horoscope = {
+                "user_id": session["user_id"],
+                "sign": sign,
+                "content": cached["content"],
+                "date": cached["date"],
+                "language": language,
+                "tradition": tradition,
+                "overall_rating": cached.get("overall_rating"),
+                "tips": cached.get("tips", []),
+                "vote": None,
+                "source": "cache"
+            }
+        else:
+            # Fallback : appel direct à l'API si le cache n'est pas encore prêt.
+            horoscope_api_data, api_error, api_status = fetch_daily_horoscope(
+                sign=sign, target_date=today, language=language, tradition=tradition
+            )
+            if api_error:
+                return api_error, api_status
 
-        horoscope = {
-            "user_id": session["user_id"],
-            "sign": sign,
-            "content": horoscope_text,
-            "date": horoscope_api_data.get("date", target_date),
-            "language": language,
-            "tradition": tradition,
-            "overall_rating": horoscope_api_data.get("overall_rating"),
-            "tips": tips,
-            "source": "astrology-api",
-            # Conservation de la reponse brute pour enrichissement futur sans changement de schema.
-            "raw_response": horoscope_api_data
-        }
+            horoscope_text = horoscope_api_data.get("overall_theme")
+            if not horoscope_text:
+                return {"error": "Astrology API response missing 'overall_theme' field"}, 502
+
+            tips = [
+                area["prediction"]
+                for area in horoscope_api_data.get("life_areas", [])
+                if area.get("prediction")
+            ]
+
+            horoscope = {
+                "user_id": session["user_id"],
+                "sign": sign,
+                "content": horoscope_text,
+                "date": horoscope_api_data.get("date", today),
+                "language": language,
+                "tradition": tradition,
+                "overall_rating": horoscope_api_data.get("overall_rating"),
+                "tips": tips,
+                "vote": None,
+                "source": "api-direct",
+                "raw_response": horoscope_api_data
+            }
 
         result = horoscopes_collection.insert_one(horoscope)
         horoscope["_id"] = result.inserted_id
 
         return serialize_horoscope(horoscope), 201
+
 
 
 @horoscopes_ns.route("")
@@ -577,6 +747,56 @@ class HoroscopeHistoryResource(Resource):
             results.append(serialize_horoscope(horoscope))
 
         return results, 200
+
+
+@horoscopes_ns.route("/<string:horoscope_id>/vote")
+class HoroscopeVoteResource(Resource):
+    @api.expect(vote_model, validate=True)
+    @api.response(200, "Vote enregistre", horoscope_model)
+    @api.response(400, "Vote invalide ou id invalide", error_model)
+    @api.response(401, "Unauthorized", error_model)
+    @api.response(403, "Vote non autorise (jour pas encore passe ou deja vote)", error_model)
+    @api.response(404, "Horoscope introuvable", error_model)
+    def post(self, horoscope_id):
+        if not login_required():
+            return {"error": "Unauthorized"}, 401
+
+        try:
+            horoscope_obj_id = ObjectId(horoscope_id)
+        except InvalidId:
+            return {"error": "Invalid horoscope id"}, 400
+
+        # Restriction d'acces : seul le proprietaire peut voter.
+        horoscope = horoscopes_collection.find_one({
+            "_id": horoscope_obj_id,
+            "user_id": session["user_id"]
+        })
+        if not horoscope:
+            return {"error": "Horoscope not found"}, 404
+
+        data = request.get_json() or {}
+        vote = data.get("vote")
+
+        if vote not in ("accurate", "inaccurate"):
+            return {"error": "Vote must be 'accurate' or 'inaccurate'"}, 400
+
+        # Un seul vote par horoscope.
+        if horoscope.get("vote") is not None:
+            return {"error": "Already voted on this horoscope"}, 403
+
+        # Le vote n'est autorise qu'apres la fin du jour de l'horoscope.
+        try:
+            h_date = date.fromisoformat(str(horoscope.get("date", ""))[:10])
+        except Exception:
+            return {"error": "Invalid horoscope date"}, 400
+
+        if h_date >= date.today():
+            return {"error": "Cannot vote before the day has passed"}, 403
+
+        horoscopes_collection.update_one({"_id": horoscope_obj_id}, {"$set": {"vote": vote}})
+        horoscope["vote"] = vote
+
+        return serialize_horoscope(horoscope), 200
 
 
 @horoscopes_ns.route("/search")

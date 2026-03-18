@@ -271,12 +271,16 @@ input:focus {
 }
 
 .history-item {
-  text-decoration: none;
-  color: inherit;
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 0.85rem;
   background: #fff;
+}
+
+.history-item-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
 }
 
 .history-item-top {
@@ -289,6 +293,33 @@ input:focus {
 .history-item p {
   margin: 0.55rem 0 0;
   color: #4b5563;
+}
+
+.vote-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.7rem;
+}
+
+.btn-sm {
+  padding: 0.25rem 0.7rem;
+  font-size: 0.82rem;
+  border-radius: 8px;
+}
+
+.vote-result {
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 0.2rem 0;
+}
+
+.vote-accurate {
+  color: #15803d;
+}
+
+.vote-inaccurate {
+  color: #9ca3af;
 }
 
 .back-link {

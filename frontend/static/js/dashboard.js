@@ -1,20 +1,84 @@
-let currentHoroscopeId = null;
+﻿let currentHoroscopeId = null;
 let currentUser = null;
 
+// ---------- Vote ----------
+
+function buildVoteSection(horoscope) {
+  const section = document.createElement("div");
+  section.className = "vote-row";
+
+  if (horoscope.vote === "accurate") {
+    const label = document.createElement("span");
+    label.className = "vote-result vote-accurate";
+    label.textContent = t("voteExactResultat");
+    section.appendChild(label);
+  } else if (horoscope.vote === "inaccurate") {
+    const label = document.createElement("span");
+    label.className = "vote-result vote-inaccurate";
+    label.textContent = t("votePasDuToutResultat");
+    section.appendChild(label);
+  } else if (horoscope.can_vote) {
+    const btnAccurate = document.createElement("button");
+    btnAccurate.className = "btn btn-outline btn-sm";
+    btnAccurate.type = "button";
+    btnAccurate.textContent = t("boutonExact");
+    btnAccurate.addEventListener("click", (e) => {
+      e.preventDefault();
+      submitVote(horoscope._id, "accurate");
+    });
+
+    const btnInaccurate = document.createElement("button");
+    btnInaccurate.className = "btn btn-outline btn-sm";
+    btnInaccurate.type = "button";
+    btnInaccurate.textContent = t("boutonPasDuTout");
+    btnInaccurate.addEventListener("click", (e) => {
+      e.preventDefault();
+      submitVote(horoscope._id, "inaccurate");
+    });
+
+    section.append(btnAccurate, btnInaccurate);
+  }
+
+  return section;
+}
+
+async function submitVote(horoscopeId, vote) {
+  try {
+    await requestJSON(`/api/horoscopes/${horoscopeId}/vote`, "POST", { vote });
+    showMessage(t("voteReussi"), "success");
+    // Rechargement de l'historique pour mettre a jour l'affichage du vote.
+    await loadHistory();
+  } catch (error) {
+    showMessage(error.message || t("voteEchoue"), "error");
+  }
+}
+
+// ---------- Historique ----------
+
 function buildHistoryItem(horoscope) {
-  const card = document.createElement("a");
-  card.href = `/horoscope/${horoscope._id}`;
-  card.className = "history-item";
+  // Conteneur <div> pour pouvoir y rattacher les boutons de vote sous le lien.
+  const wrapper = document.createElement("div");
+  wrapper.className = "history-item";
+
+  const link = document.createElement("a");
+  link.href = `/horoscope/${horoscope._id}`;
+  link.className = "history-item-link";
 
   const top = document.createElement("div");
   top.className = "history-item-top";
-  top.innerHTML = `<strong>${horoscope.sign}</strong><span>${formatDateLabel(horoscope.date)}</span>`;
+  const sign = document.createElement("strong");
+  sign.textContent = horoscope.sign;
+  const dateSpan = document.createElement("span");
+  dateSpan.textContent = formatDateLabel(horoscope.date);
+  top.append(sign, dateSpan);
 
   const excerpt = document.createElement("p");
   excerpt.textContent = (horoscope.content || "").slice(0, 120) + "...";
 
-  card.append(top, excerpt);
-  return card;
+  link.append(top, excerpt);
+  wrapper.appendChild(link);
+  wrapper.appendChild(buildVoteSection(horoscope));
+  return wrapper;
 }
 
 function renderCurrentHoroscope(horoscope) {
@@ -22,15 +86,19 @@ function renderCurrentHoroscope(horoscope) {
   const content = document.getElementById("daily-content");
 
   if (!horoscope) {
-    meta.textContent = "Aucun horoscope genere";
-    content.textContent = "Cliquez sur le bouton pour generer l'horoscope du jour.";
+    meta.textContent = t("aucunHoroscopeGenere");
+    content.textContent = t("inviteGeneration");
     currentHoroscopeId = null;
     return;
   }
 
   currentHoroscopeId = horoscope._id;
-  meta.textContent = `${horoscope.sign} - ${formatDateLabel(horoscope.date)} - Note: ${horoscope.overall_rating ?? "n/a"}/5`;
-  content.textContent = horoscope.content || "Aucun contenu disponible.";
+  meta.textContent = t("metaQuotidien", {
+    sign: horoscope.sign,
+    date: formatDateLabel(horoscope.date),
+    rating: horoscope.overall_rating ?? t("noteNonDisponible"),
+  });
+  content.textContent = horoscope.content || t("aucunContenuDisponible");
 }
 
 async function loadHistory() {
@@ -41,7 +109,7 @@ async function loadHistory() {
   const data = await requestJSON("/api/horoscopes/history");
   if (!Array.isArray(data) || data.length === 0) {
     renderCurrentHoroscope(null);
-    list.innerHTML = '<p class="muted">Aucun historique pour le moment.</p>';
+    list.innerHTML = `<p class="muted">${t("historiqueVide")}</p>`;
     return;
   }
 
@@ -49,15 +117,17 @@ async function loadHistory() {
   data.forEach((item) => list.appendChild(buildHistoryItem(item)));
 }
 
+// ---------- Generation ----------
+
 async function generateHoroscope() {
   if (!currentUser?.birthdate) {
-    showMessage("Date de naissance introuvable dans votre profil.", "error");
+    showMessage(t("profilDateNaissanceIntrouvable"), "error");
     return;
   }
 
   const button = document.getElementById("generate-btn");
   button.disabled = true;
-  button.textContent = "Generation en cours...";
+  button.textContent = t("boutonGenererLoading");
 
   try {
     // Transmission de la langue choisie pour obtenir la reponse AstroAPI correspondante.
@@ -67,40 +137,51 @@ async function generateHoroscope() {
       tradition: "universal",
     };
     const result = await requestJSON("/api/horoscopes/generate", "POST", payload);
+
     renderCurrentHoroscope(result);
     await loadHistory();
-    showMessage("Horoscope genere avec succes.", "success");
+
+    // 200 = horoscope deja consulte aujourd'hui, 201 = nouvellement genere.
+    if (result._alreadyToday) {
+      showMessage(t("horoscopeDejaDuJour"), "info");
+    } else {
+      showMessage(t("generationReussie"), "success");
+    }
   } catch (error) {
-    showMessage(error.message || "Erreur lors de la generation.", "error");
+    showMessage(error.message || t("generationEchouee"), "error");
   } finally {
     button.disabled = false;
-    button.textContent = "Generer un nouvel horoscope";
+    button.textContent = t("boutonGenerer");
   }
 }
+
+// ---------- Commentaires ----------
 
 async function publishComment(event) {
   event.preventDefault();
 
   if (!currentHoroscopeId) {
-    showMessage("Generez d'abord un horoscope.", "error");
+    showMessage(t("generationBesoinHoroscope"), "error");
     return;
   }
 
   const input = document.getElementById("dashboard-comment-input");
   const content = input.value.trim();
   if (!content) {
-    showMessage("Le commentaire est vide.", "error");
+    showMessage(t("commentaireVide"), "error");
     return;
   }
 
   try {
     await requestJSON(`/api/horoscopes/${currentHoroscopeId}/comments`, "POST", { content });
     input.value = "";
-    showMessage("Commentaire publie.", "success");
+    showMessage(t("publicationCommentaireReussie"), "success");
   } catch (error) {
-    showMessage(error.message || "Impossible de publier le commentaire.", "error");
+    showMessage(error.message || t("publicationCommentaireEchouee"), "error");
   }
 }
+
+// ---------- Init ----------
 
 document.addEventListener("DOMContentLoaded", async () => {
   currentUser = await getCurrentUser();
@@ -109,15 +190,27 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  const generateBtn = document.getElementById("generate-btn");
+  const boutonGenerer = document.getElementById("generate-btn");
   const commentForm = document.getElementById("dashboard-comment-form");
 
-  generateBtn.addEventListener("click", generateHoroscope);
+  boutonGenerer.addEventListener("click", generateHoroscope);
   commentForm.addEventListener("submit", publishComment);
 
   try {
     await loadHistory();
   } catch (_error) {
-    showMessage("Impossible de charger l'historique.", "error");
+    showMessage(t("erreurChargementHistorique"), "error");
   }
+
+  document.addEventListener("languageChanged", async () => {
+    if (boutonGenerer && !boutonGenerer.disabled) {
+      boutonGenerer.textContent = t("boutonGenerer");
+    }
+    try {
+      await loadHistory();
+    } catch (_error) {
+      showMessage(t("erreurChargementHistorique"), "error");
+    }
+  });
 });
+

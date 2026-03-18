@@ -1,11 +1,11 @@
-function renderComments(comments) {
+﻿function renderComments(comments) {
   const container = document.getElementById("detail-comments");
   container.textContent = "";
 
   if (!Array.isArray(comments) || comments.length === 0) {
     const empty = document.createElement("p");
     empty.className = "muted";
-    empty.textContent = "Aucun commentaire pour cet horoscope.";
+    empty.textContent = t("commentairesVides");
     container.appendChild(empty);
     return;
   }
@@ -16,7 +16,7 @@ function renderComments(comments) {
 
     // Rendu texte uniquement pour eliminer les risques d'injection HTML/XSS.
     const author = document.createElement("h3");
-    author.textContent = "Utilisateur";
+    author.textContent = t("auteurCommentaire");
 
     const body = document.createElement("p");
     body.textContent = comment.content || "";
@@ -27,10 +27,61 @@ function renderComments(comments) {
   });
 }
 
+function renderVote(horoscope) {
+  const container = document.getElementById("detail-vote");
+  if (!container) return;
+  container.textContent = "";
+
+  if (horoscope.vote === "accurate") {
+    const label = document.createElement("span");
+    label.className = "vote-result vote-accurate";
+    label.textContent = t("voteExactResultat");
+    container.appendChild(label);
+  } else if (horoscope.vote === "inaccurate") {
+    const label = document.createElement("span");
+    label.className = "vote-result vote-inaccurate";
+    label.textContent = t("votePasDuToutResultat");
+    container.appendChild(label);
+  } else if (horoscope.can_vote) {
+    const btnAccurate = document.createElement("button");
+    btnAccurate.className = "btn btn-outline btn-sm";
+    btnAccurate.type = "button";
+    btnAccurate.textContent = t("boutonExact");
+    btnAccurate.addEventListener("click", async () => {
+      try {
+        await requestJSON(`/api/horoscopes/${horoscope._id}/vote`, "POST", { vote: "accurate" });
+        showMessage(t("voteReussi"), "success");
+        const updated = await requestJSON(`/api/horoscopes/${horoscope._id}`);
+        renderVote(updated);
+      } catch (error) {
+        showMessage(error.message || t("voteEchoue"), "error");
+      }
+    });
+
+    const btnInaccurate = document.createElement("button");
+    btnInaccurate.className = "btn btn-outline btn-sm";
+    btnInaccurate.type = "button";
+    btnInaccurate.textContent = t("boutonPasDuTout");
+    btnInaccurate.addEventListener("click", async () => {
+      try {
+        await requestJSON(`/api/horoscopes/${horoscope._id}/vote`, "POST", { vote: "inaccurate" });
+        showMessage(t("voteReussi"), "success");
+        const updated = await requestJSON(`/api/horoscopes/${horoscope._id}`);
+        renderVote(updated);
+      } catch (error) {
+        showMessage(error.message || t("voteEchoue"), "error");
+      }
+    });
+
+    container.append(btnAccurate, btnInaccurate);
+  }
+}
+
 async function loadHoroscopeDetail() {
   const horoscope = await requestJSON(`/api/horoscopes/${window.HOROSCOPE_ID}`);
   document.getElementById("detail-meta").textContent = `${horoscope.sign} - ${formatDateLabel(horoscope.date)}`;
-  document.getElementById("detail-content").textContent = horoscope.content || "Aucun contenu";
+  document.getElementById("detail-content").textContent = horoscope.content || t("aucunContenu");
+  renderVote(horoscope);
 }
 
 async function loadComments() {
@@ -44,7 +95,7 @@ async function submitComment(event) {
   const content = input.value.trim();
 
   if (!content) {
-    showMessage("Le commentaire est vide.", "error");
+    showMessage(t("commentaireVide"), "error");
     return;
   }
 
@@ -52,9 +103,9 @@ async function submitComment(event) {
     await requestJSON(`/api/horoscopes/${window.HOROSCOPE_ID}/comments`, "POST", { content });
     input.value = "";
     await loadComments();
-    showMessage("Commentaire ajoute.", "success");
+    showMessage(t("ajoutCommentaireReussi"), "success");
   } catch (error) {
-    showMessage(error.message || "Erreur lors de l'ajout du commentaire.", "error");
+    showMessage(error.message || t("ajoutCommentaireEchoue"), "error");
   }
 }
 
@@ -71,6 +122,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     await loadHoroscopeDetail();
     await loadComments();
   } catch (_error) {
-    showMessage("Impossible de charger les details de l'horoscope.", "error");
+    showMessage(t("erreurChargementDetail"), "error");
   }
+
+  document.addEventListener("languageChanged", async () => {
+    try {
+      await loadHoroscopeDetail();
+      await loadComments();
+    } catch (_error) {
+      showMessage(t("erreurChargementDetail"), "error");
+    }
+  });
 });
+

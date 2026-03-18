@@ -126,3 +126,18 @@ Les horoscopes sont recuperes a partir d'une **API externe (AstroAPI)**, puis sa
 - POST /api/horoscopes/{horoscope_id}/comments
 - GET /api/horoscopes/{horoscope_id}/comments
 
+## Note : faux positif Jinja dans VS Code
+
+Dans `frontend/templates/detail.html`, VS Code signale une erreur sur la ligne :
+
+```html
+<script>window.HOROSCOPE_ID = {{ horoscope_id | tojson }};</script>
+```
+
+VS Code analyse ce bloc comme du JavaScript pur, sans connaitre la syntaxe Jinja.
+Il voit `{{ ... }}` et considere le JS invalide (`Property assignment expected`).
+
+Ce n'est pas une vraie erreur : au moment ou Flask/Jinja genere la page, `{{ horoscope_id | tojson }}` est remplace par une vraie valeur JSON (ex. `"64abc123..."`), ce qui produit un JavaScript valid.
+
+Ce type d'alerte est appele **faux positif** : signale par l'outil d'analyse statique, mais sans impact sur le fonctionnement de l'application.
+
