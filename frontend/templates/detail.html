@@ -1,31 +1,39 @@
 {% extends 'base.html' %}
 
-{% block title %}Detail Horoscope | AstroDaily{% endblock %}
+{% block title %}Dashboard | AstroDaily{% endblock %}
 
 {% set show_header = true %}
 
 {% block content %}
 <section class="content-shell">
-  <a class="back-link" href="{{ url_for('dashboard_page') }}">Retour</a>
+  <article class="card daily-card">
+    <h1 data-i18n="titreQuotidien">Horoscope du jour</h1>
+    <p id="daily-meta" class="daily-meta" data-i18n="metaQuotidienEnAttente">Signe en attente...</p>
+    <p id="daily-content" class="daily-content" data-i18n="contenuQuotidienEnAttente">Connectez-vous puis cliquez sur "Generer un nouvel horoscope".</p>
 
-  <article class="card detail-card">
-    <p id="detail-meta" class="daily-meta">Chargement...</p>
-    <p id="detail-content" class="daily-content"></p>
+    <div class="feedback-row">
+      <button class="btn btn-outline" type="button" disabled data-i18n="boutonExact">C'etait exact</button>
+      <button class="btn btn-outline" type="button" disabled data-i18n="boutonPasDuTout">Pas du tout</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <h2 data-i18n="titreCommentaires">Commentaires</h2>
+    <form id="dashboard-comment-form" class="comment-form" novalidate>
+      <input id="dashboard-comment-input" type="text" placeholder="Ajouter un commentaire..." data-i18n-placeholder="placeholderCommentaire" maxlength="500" />
+      <button class="btn btn-primary" type="submit" data-i18n="boutonPublier">Publier</button>
+    </form>
+
+    <button id="generate-btn" class="btn btn-primary btn-wide" type="button" data-i18n="boutonGenerer">Generer un nouvel horoscope</button>
   </article>
 
-  <article class="card comments-card">
-    <h2>Commentaires</h2>
-    <div id="detail-comments" class="detail-comments"></div>
-
-    <form id="detail-comment-form" class="comment-form" novalidate>
-      <input id="detail-comment-input" type="text" placeholder="Ajouter un commentaire..." maxlength="500" required />
-      <button class="btn btn-primary" type="submit">Publier</button>
-    </form>
+  <article class="card history-card">
+    <h2 data-i18n="titreHistorique">Historique des horoscopes</h2>
+    <div id="history-list" class="history-list"></div>
   </article>
 </section>
 {% endblock %}
 
 {% block scripts %}
-<script>window.HOROSCOPE_ID = {{ horoscope_id | tojson }};</script>
-<script src="{{ url_for('static', filename='js/detail.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}

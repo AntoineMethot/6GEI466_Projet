@@ -4,36 +4,36 @@
 
 {% block content %}
 <section class="auth-shell">
-  <div class="lang-toggle auth-lang" role="group" aria-label="Choix de langue">
+  <div class="lang-toggle auth-lang" role="group" aria-label="Choix de langue" data-i18n-aria-label="choixLangueAria">
     <button id="lang-fr" class="lang-btn" type="button">FR</button>
     <button id="lang-en" class="lang-btn" type="button">EN</button>
   </div>
 
   <div class="hero-mark">*</div>
   <h1 class="hero-title">AstroDaily</h1>
-  <p class="hero-subtitle">Decouvrez votre destinee</p>
+  <p class="hero-subtitle" data-i18n="sousTitreHero">Decouvrez votre destinee</p>
 
   <div class="card auth-card">
-    <h2>S'inscrire</h2>
+    <h2 data-i18n="titreInscription">S'inscrire</h2>
 
     <form id="register-form" class="form-grid" novalidate>
-      <label for="register-name">Nom complet</label>
-      <input id="register-name" name="name" type="text" placeholder="Jean Dupont" required />
+      <label for="register-name" data-i18n="labelNomComplet">Nom complet</label>
+      <input id="register-name" name="name" type="text" placeholder="Jean Dupont" data-i18n-placeholder="labelNomComplet" required />
 
-      <label for="register-email">Adresse courriel</label>
-      <input id="register-email" name="email" type="email" placeholder="exemple@email.com" required />
+      <label for="register-email" data-i18n="labelCourriel">Adresse courriel</label>
+      <input id="register-email" name="email" type="email" placeholder="exemple@email.com" data-i18n-placeholder="labelCourriel" required />
 
-      <label for="register-password">Mot de passe</label>
+      <label for="register-password" data-i18n="labelMotDePasse">Mot de passe</label>
       <input id="register-password" name="password" type="password" placeholder="******" minlength="8" required />
 
-      <label for="register-birthdate">Date de naissance</label>
+      <label for="register-birthdate" data-i18n="labelDateNaissance">Date de naissance</label>
       <input id="register-birthdate" name="birthdate" type="date" required />
-      <p class="helper-text">Votre signe astrologique sera determine automatiquement.</p>
+      <p class="helper-text" data-i18n="aideDateNaissance">Votre signe astrologique sera determine automatiquement.</p>
 
-      <button id="register-submit" class="btn btn-primary" type="submit">S'inscrire</button>
+      <button id="register-submit" class="btn btn-primary" type="submit" data-i18n="boutonInscription">S'inscrire</button>
     </form>
 
-    <a class="auth-link" href="{{ url_for('login_page') }}">Deja un compte ? Se connecter</a>
+    <a class="auth-link" href="{{ url_for('login_page') }}" data-i18n="lienDejaCompte">Deja un compte ? Se connecter</a>
   </div>
 </section>
 {% endblock %}
@@ -41,3 +41,4 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
 {% endblock %}
+
