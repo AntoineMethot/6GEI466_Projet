@@ -415,7 +415,7 @@ class HealthResource(Resource):
 # AUTH
 # ------------------------
 
-@auth_ns.route("/register")
+@users_ns.route("")
 class RegisterResource(Resource):
     @api.expect(register_model, validate=True)
     @api.response(201, "User created")

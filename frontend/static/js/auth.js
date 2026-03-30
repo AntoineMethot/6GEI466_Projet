@@ -52,7 +52,7 @@ async function handleRegister(event) {
 
   try {
     // UX: connexion automatique activee juste apres l'inscription.
-    await requestJSON("/api/auth/register", "POST", { name, email, password, birthdate });
+    await requestJSON("/api/users", "POST", { name, email, password, birthdate });
     await requestJSON("/api/auth/login", "POST", { email, password });
     showMessage(t("inscriptionReussie"), "success");
     window.location.href = "/dashboard";

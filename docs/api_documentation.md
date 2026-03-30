@@ -41,41 +41,7 @@ Crée un nouveau compte utilisateur.
 | `name` | string | Oui | Nom complet |
 | `email` | string | Oui | Adresse courriel unique |
 | `password` | string | Oui | Mot de passe (min. 8 caractères recommandé) |
-| `birthdate` | string | Oui | Date de naissance au format `YYYY-MM-DD` |
-
-**Réponses**
-
-| Code | Description |
-| 201 | Compte créé avec succès |
-| 400 | Champ manquant ou courriel déjà utilisé |
-
-**Réponse 201**
-```json
-{
-  "message": "User created",
-  "user_id": "67d0a1b2c3d4e5f678901234"
-}
-```
-
----
-
-### `POST /api/auth/login`
-
-Ouvre une session utilisateur.
-
-**Corps de la requête**
-```json
-{
-  "email": "marie@email.com",
-  "password": "motdepasse123"
-}
-```
-
-**Réponses**
-
-| Code | Description |
-| 200 | Connexion réussie, cookie de session créé |
-| 400 | Champs manquants |
+*Registration has moved to the users resource: use* `POST /api/users` *to create a new account.*
 | 401 | Identifiants invalides |
 
 **Réponse 200**
@@ -131,7 +97,44 @@ Retourne l'utilisateur actuellement connecté.
 
 ## Utilisateurs — `/api/users`
 
-Tous les endpoints de cette section nécessitent d'être connecté.
+Tous les endpoints de cette section nécessitent d'être connecté, sauf la création de compte.
+
+### `POST /api/users`
+
+Crée un nouveau compte utilisateur (inscription).
+
+**Corps de la requête**
+```json
+{
+  "name": "Marie Tremblay",
+  "email": "marie@email.com",
+  "password": "motdepasse123",
+  "birthdate": "1995-06-15"
+}
+```
+
+| Champ | Type | Obligatoire | Description |
+|---|---|---|---|
+| `name` | string | Oui | Nom complet |
+| `email` | string | Oui | Adresse courriel unique |
+| `password` | string | Oui | Mot de passe (min. 8 caractères recommandé) |
+| `birthdate` | string | Oui | Date de naissance au format `YYYY-MM-DD` |
+
+**Réponses**
+
+| Code | Description |
+|---|---|
+| 201 | Compte créé avec succès |
+| 400 | Champ manquant ou courriel déjà utilisé |
+
+**Réponse 201**
+```json
+{
+  "message": "User created",
+  "user_id": "67d0a1b2c3d4e5f678901234"
+}
+```
+
 
 ### `GET /api/users/me`
 

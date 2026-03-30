@@ -112,7 +112,7 @@ Les horoscopes sont recuperes a partir d'une **API externe (AstroAPI)**, puis sa
 
 # API for frontend
 
-- POST /api/auth/register
+- POST /api/users
 - POST /api/auth/login
 - POST /api/auth/logout
 - GET /api/auth/me
