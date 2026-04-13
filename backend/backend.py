@@ -12,7 +12,7 @@ import requests
 import os
 
 app = Flask(__name__)
-
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev_secret_key")
 # Session cookie settings for local dev across frontend/backend ports
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
