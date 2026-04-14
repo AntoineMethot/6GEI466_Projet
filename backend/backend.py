@@ -10,6 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
 import requests
 import os
+import re
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev_secret_key")
@@ -43,11 +44,15 @@ daily_cache_collection = db["daily_horoscopes_cache"]
 
 
 def _deduplicate_horoscopes_for_unique_index():
-    """Supprime les doublons user_id+date en conservant le document le plus récent."""
+    """Supprime les doublons user_id+date+language en conservant le document le plus récent."""
     duplicates = horoscopes_collection.aggregate([
         {
             "$group": {
-                "_id": {"user_id": "$user_id", "date": "$date"},
+                "_id": {
+                    "user_id": "$user_id",
+                    "date": "$date",
+                    "language": {"$ifNull": ["$language", "fr"]}
+                },
                 "ids": {"$push": "$_id"},
                 "count": {"$sum": 1}
             }
@@ -73,26 +78,38 @@ def _deduplicate_horoscopes_for_unique_index():
         app.logger.warning(f"[startup] {total_deleted} doublons horoscopes supprimes pour creer l'index unique")
 
 
-# Index unique pour éviter les doublons dans le cache et dans l'historique utilisateur.
+#fonction pour garantir l'unicité des horoscopes par utilisateur, jour et langue, en supprimant les doublons historiques avant de créer l'index unique
+def _ensure_horoscope_indexes():
+    # autorise un horoscope par jour ET par langue (fr/en).
+    legacy_index_name = "user_id_1_date_1"
+    existing_indexes = horoscopes_collection.index_information()
+
+    if legacy_index_name in existing_indexes:
+        horoscopes_collection.drop_index(legacy_index_name)
+
+    try:
+        horoscopes_collection.create_index(
+            [("user_id", ASCENDING), ("date", ASCENDING), ("language", ASCENDING)],
+            unique=True,
+            sparse=False
+        )
+    except DuplicateKeyError:
+        # Migration de sécurité: si des doublons historiques existent déjà,
+        # on les supprime puis on retente la création de l'index unique.
+        _deduplicate_horoscopes_for_unique_index()
+        horoscopes_collection.create_index(
+            [("user_id", ASCENDING), ("date", ASCENDING), ("language", ASCENDING)],
+            unique=True,
+            sparse=False
+        )
+
+
+# Index unique pour éviter les doublons dans le cache et dans l'historique utilisateur
 daily_cache_collection.create_index(
     [("sign", ASCENDING), ("language", ASCENDING), ("date", ASCENDING)],
     unique=True
 )
-try:
-    horoscopes_collection.create_index(
-        [("user_id", ASCENDING), ("date", ASCENDING)],
-        unique=True,
-        sparse=False
-    )
-except DuplicateKeyError:
-    # Migration de sécurité: si des doublons historiques existent déjà,
-    # on les supprime puis on retente la création de l'index unique.
-    _deduplicate_horoscopes_for_unique_index()
-    horoscopes_collection.create_index(
-        [("user_id", ASCENDING), ("date", ASCENDING)],
-        unique=True,
-        sparse=False
-    )
+_ensure_horoscope_indexes()
 
 # La configuration de l'API externe vient des variables d'environnement
 # pour ne jamais versionner de secret dans le depot.
@@ -107,6 +124,7 @@ ZODIAC_SIGNS = [
 ]
 SUPPORTED_LANGUAGES = ["fr", "en"]
 DEFAULT_TRADITION = "universal"
+EMAIL_REGEX = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
 def login_required() -> bool:
@@ -123,6 +141,7 @@ def serialize_user(user: dict) -> dict:
 
 
 def serialize_horoscope(horoscope: dict) -> dict:
+    # On expose uniquement les champs utiles sans renvoyer toute la réponse brute de l'api externe
     return {
         "_id": str(horoscope["_id"]),
         "user_id": horoscope["user_id"],
@@ -142,6 +161,11 @@ def _can_vote(horoscope: dict) -> bool:
     # Le vote est possible uniquement après la fin de la journée concernée.
     if horoscope.get("vote") is not None:
         return False
+
+    # Regle metier: un seul vote par utilisateur, jour et signe, independamment de la langue (FR/EN)
+    if _has_vote_for_same_day_sign(horoscope):
+        return False
+
     horoscope_date_str = horoscope.get("date")
     if not horoscope_date_str:
         return False
@@ -151,6 +175,28 @@ def _can_vote(horoscope: dict) -> bool:
     except Exception:
         return False
 
+#fonction pour vérifier si l'utilisateur a déjà voté pour un horoscope 
+def _has_vote_for_same_day_sign(horoscope: dict) -> bool:
+    user_id = horoscope.get("user_id")
+    sign = horoscope.get("sign")
+    date_str = str(horoscope.get("date", ""))[:10]
+    current_id = horoscope.get("_id")
+
+    if not user_id or not sign or not date_str:
+        return False
+
+    query = {
+        "user_id": user_id,
+        "sign": sign,
+        "date": date_str,
+        "vote": {"$in": ["accurate", "inaccurate"]}
+    }
+
+    if current_id is not None:
+        query["_id"] = {"$ne": current_id}
+
+    return horoscopes_collection.find_one(query, {"_id": 1}) is not None
+
 
 def serialize_comment(comment: dict) -> dict:
     return {
@@ -159,6 +205,33 @@ def serialize_comment(comment: dict) -> dict:
         "user_id": comment["user_id"],
         "content": comment["content"]
     }
+
+
+def is_valid_email(value: str) -> bool:
+    return bool(EMAIL_REGEX.fullmatch((value or "").strip()))
+
+
+def parse_birthdate_input(value):
+    # Validation centralisée des dates de naissance pour éviter les incohérences entre l’inscription et la génération d’horoscope
+    if not isinstance(value, str):
+        return None, {"error": "Birthdate is required"}, 400
+
+    birthdate_str = value.strip()
+    if not birthdate_str:
+        return None, {"error": "Birthdate is required"}, 400
+
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", birthdate_str):
+        return None, {"error": "Invalid birthdate format (expected YYYY-MM-DD)"}, 400
+
+    try:
+        parsed_birthdate = date.fromisoformat(birthdate_str)
+    except ValueError:
+        return None, {"error": "Invalid birthdate"}, 400
+
+    if parsed_birthdate > date.today():
+        return None, {"error": "Birthdate cannot be in the future"}, 400
+
+    return parsed_birthdate, None, None
 
 
 @app.after_request
@@ -398,6 +471,16 @@ comment_model = api.model("Comment", {
 status_model = api.model("HealthResponse", {
     "status": fields.String(example="ok")
 })
+# Model pour les stats de validation d'horoscopes d'un utilisateur
+validation_horoscope_model = api.model("ValidationHoroscopeStats", {
+    "total_horoscopes": fields.Integer(example=12),
+    "total_avec_vote": fields.Integer(example=7),
+    "total_valides": fields.Integer(example=5),
+    "total_invalides": fields.Integer(example=2),
+    "pourcentage_validation": fields.Float(example=71.4),
+    "pourcentage_participation": fields.Float(example=58.3),
+    "a_des_votes": fields.Boolean(example=True)
+})
 
 
 # ------------------------
@@ -423,13 +506,22 @@ class RegisterResource(Resource):
     def post(self):
         data = request.get_json() or {}
 
-        name = data.get("name")
-        email = data.get("email")
-        password = data.get("password")
-        birthdate = data.get("birthdate")
+        name = (data.get("name") or "").strip()
+        email = (data.get("email") or "").strip().lower()
+        password = str(data.get("password") or "")
 
-        if not name or not email or not password or not birthdate:
+        if not name or not email or not password:
             return {"error": "Name, email, password and birthdate are required"}, 400
+
+        if not is_valid_email(email):
+            return {"error": "Invalid email format"}, 400
+
+        if len(password) < 8:
+            return {"error": "Password must contain at least 8 characters"}, 400
+
+        birthdate, birthdate_error, birthdate_status = parse_birthdate_input(data.get("birthdate"))
+        if birthdate_error:
+            return birthdate_error, birthdate_status
 
         if users_collection.find_one({"email": email}):
             return {"error": "User already exists"}, 400
@@ -437,7 +529,7 @@ class RegisterResource(Resource):
         user = {
             "name": name,
             "email": email,
-            "birthdate": birthdate,
+            "birthdate": birthdate.isoformat(),
             "password_hash": generate_password_hash(password)
         }
 
@@ -458,7 +550,7 @@ class LoginResource(Resource):
     def post(self):
         data = request.get_json() or {}
 
-        email = data.get("email")
+        email = (data.get("email") or "").strip().lower()
         password = data.get("password")
 
         if not email or not password:
@@ -554,16 +646,20 @@ class UserMeResource(Resource):
         update_fields = {}
 
         if "name" in data and data["name"]:
-            update_fields["name"] = data["name"]
+            update_fields["name"] = str(data["name"]).strip()
 
         if "email" in data and data["email"]:
+            new_email = str(data["email"]).strip().lower()
+            if not is_valid_email(new_email):
+                return {"error": "Invalid email format"}, 400
+
             existing_user = users_collection.find_one({
-                "email": data["email"],
+                "email": new_email,
                 "_id": {"$ne": ObjectId(session["user_id"])}
             })
             if existing_user:
                 return {"error": "Email already in use"}, 400
-            update_fields["email"] = data["email"]
+            update_fields["email"] = new_email
 
         if not update_fields:
             return {"error": "No valid fields to update"}, 400
@@ -607,6 +703,7 @@ class UserMeResource(Resource):
         if result.deleted_count == 0:
             return {"error": "User not found"}, 404
 
+        # Nettoyage associé : on supprime aussi les horoscopes et commentaires liés à ce compte pour garder la base cohérente
         horoscopes_collection.delete_many({"user_id": user_id_str})
         comments_collection.delete_many({"user_id": user_id_str})
 
@@ -634,27 +731,32 @@ class GenerateHoroscopeResource(Resource):
             return {"error": "Unauthorized"}, 401
 
         data = request.get_json() or {}
-        birthdate_str = data.get("birthdate")
+        birth, birthdate_error, birthdate_status = parse_birthdate_input(data.get("birthdate"))
+        if birthdate_error:
+            return birthdate_error, birthdate_status
 
-        if not birthdate_str:
-            return {"error": "Birthdate is required"}, 400
-
-        try:
-            birth = datetime.fromisoformat(birthdate_str).date()
-        except Exception:
-            return {"error": "Invalid birthdate format (expected YYYY-MM-DD)"}, 400
-
+        # Le signe est recalculé à partir de la date de naissance enregistrée
         sign = get_zodiac_sign(birth)
         if sign == "unknown":
             return {"error": "Unable to determine zodiac sign from birthdate"}, 400
 
-        language = data.get("language", "fr")
+        # La langue choisie par le client détermine la version FR ou EN du jour.
+        language = (data.get("language") or "fr").strip().lower()
+        if language not in SUPPORTED_LANGUAGES:
+            return {"error": "Unsupported language"}, 400
+
         tradition = data.get("tradition", DEFAULT_TRADITION)
         today = date.today().isoformat()
 
-        # Limite : un seul horoscope par utilisateur par jour.
+        # Limite : un seul horoscope par utilisateur, par jour et par langue.
         # Retourne l'existant sans rappeler l'API externe.
-        existing = horoscopes_collection.find_one({"user_id": session["user_id"], "date": today})
+        existing_query = {"user_id": session["user_id"], "date": today}
+        if language == "fr":
+            existing_query["$or"] = [{"language": "fr"}, {"language": {"$exists": False}}]
+        else:
+            existing_query["language"] = language
+
+        existing = horoscopes_collection.find_one(existing_query)
         if existing:
             serialized = serialize_horoscope(existing)
             serialized["_alreadyToday"] = True
@@ -731,6 +833,46 @@ class HoroscopeListResource(Resource):
 
         return results, 200
 
+# Endpoint pour obtenir les statistiques de validation des horoscopes d'un utilisateur
+@horoscopes_ns.route("/stats/validation")
+class HoroscopeValidationStatsResource(Resource):
+    @api.response(200, "Validation statistics", validation_horoscope_model)
+    @api.response(401, "Unauthorized", error_model)
+    def get(self):
+        if not login_required():
+            return {"error": "Unauthorized"}, 401
+
+        identifiant_utilisateur = session["user_id"]
+
+        # Calcul global base sur tous les horoscopes de l'utilisateur, puis sur ceux qui ont effectivement recu un vote.
+        total_horoscopes = horoscopes_collection.count_documents({"user_id": identifiant_utilisateur})
+        total_avec_vote = horoscopes_collection.count_documents({
+            "user_id": identifiant_utilisateur,
+            "vote": {"$in": ["accurate", "inaccurate"]}
+        })
+        total_valides = horoscopes_collection.count_documents({
+            "user_id": identifiant_utilisateur,
+            "vote": "accurate"
+        })
+        total_invalides = horoscopes_collection.count_documents({
+            "user_id": identifiant_utilisateur,
+            "vote": "inaccurate"
+        })
+
+        # Protection contre la division par zero : si aucun vote, le taux reste a 0%
+        pourcentage_validation = round((total_valides / total_avec_vote) * 100, 1) if total_avec_vote > 0 else 0.0
+        pourcentage_participation = round((total_avec_vote / total_horoscopes) * 100, 1) if total_horoscopes > 0 else 0.0
+
+        return {
+            "total_horoscopes": total_horoscopes,
+            "total_avec_vote": total_avec_vote,
+            "total_valides": total_valides,
+            "total_invalides": total_invalides,
+            "pourcentage_validation": pourcentage_validation,
+            "pourcentage_participation": pourcentage_participation,
+            "a_des_votes": total_avec_vote > 0
+        }, 200
+
 
 @horoscopes_ns.route("/history")
 class HoroscopeHistoryResource(Resource):
@@ -792,6 +934,10 @@ class HoroscopeVoteResource(Resource):
 
         if h_date >= date.today():
             return {"error": "Cannot vote before the day has passed"}, 403
+
+        # Regle metier globale FR/EN: un seul vote par jour/signe
+        if _has_vote_for_same_day_sign(horoscope):
+            return {"error": "A vote already exists for this sign and day"}, 403
 
         horoscopes_collection.update_one({"_id": horoscope_obj_id}, {"$set": {"vote": vote}})
         horoscope["vote"] = vote

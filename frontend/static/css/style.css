@@ -234,6 +234,92 @@ input:focus {
   margin: 0 0 0.8rem;
 }
 
+.validation-card h2 {
+  margin: 0 0 0.5rem;
+}
+
+.validation-widget {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 0.9rem;
+  align-items: center;
+}
+
+.bonhomme {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border-radius: 18px;
+  border: 2px solid var(--line);
+  background: #faf5ff;
+}
+
+.bonhomme::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  left: 26px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.75;
+}
+
+.bonhomme::after {
+  content: "";
+  position: absolute;
+  bottom: 12px;
+  left: 21px;
+  width: 34px;
+  height: 26px;
+  border-radius: 14px 14px 10px 10px;
+  background: currentColor;
+  opacity: 0.85;
+}
+
+.bonhomme-neutre {
+  color: #6b7280;
+}
+
+.bonhomme-positif {
+  color: #15803d;
+}
+
+.bonhomme-moyen {
+  color: #ca8a04;
+}
+
+.bonhomme-faible {
+  color: #b91c1c;
+}
+
+.validation-infos {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.validation-pourcentage {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.validation-progress {
+  height: 12px;
+  border-radius: 999px;
+  background: #ede9fe;
+  overflow: hidden;
+}
+
+.validation-progress-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--primary-2), var(--primary));
+  transition: width 0.3s ease;
+}
+
 .daily-meta {
   color: var(--muted);
   margin-top: 0;
@@ -399,6 +485,10 @@ input:focus {
 
   .daily-content {
     font-size: 1.1rem;
+  }
+
+  .validation-widget {
+    grid-template-columns: 1fr;
   }
 
   .comment-form {

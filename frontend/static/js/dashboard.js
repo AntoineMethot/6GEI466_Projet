@@ -1,5 +1,60 @@
 ﻿let currentHoroscopeId = null;
 let currentUser = null;
+let statistiquesValidationCourantes = null;
+
+// Statistiques de validation 
+// Le "bonhomme" change de couleur en fonction du taux de validation pour donner une indication visuelle rapide de la fiabilité perçue des horoscopes generes 
+function determinerClasseBonhomme(pourcentageValidation, aDesVotes) {
+  if (!aDesVotes) return "bonhomme-neutre";
+  if (pourcentageValidation >= 70) return "bonhomme-positif";
+  if (pourcentageValidation >= 45) return "bonhomme-moyen";
+  return "bonhomme-faible";
+}
+
+// Rend l'affichage des statistiques de validation dans le dashboard, en utilisant les libelles traduits et en adaptant l'affichage selon la presence ou non de votes
+function renderValidationStats(stats) {
+  const pourcentageNode = document.getElementById("validation-pourcentage");
+  const detailNode = document.getElementById("validation-detail");
+  const progressNode = document.getElementById("validation-progress-fill");
+  const bonhommeNode = document.getElementById("validation-bonhomme");
+
+  if (!pourcentageNode || !detailNode || !progressNode || !bonhommeNode) {
+    return;
+  }
+
+  // La valeur utile est le taux de votes "accurate" sur tous les horoscopes votés
+  const pourcentageValidation = Number(stats?.pourcentage_validation || 0);
+  const aDesVotes = Boolean(stats?.a_des_votes);
+
+  pourcentageNode.textContent = `${pourcentageValidation.toFixed(1)}%`;
+  progressNode.style.width = `${Math.max(0, Math.min(100, pourcentageValidation))}%`;
+
+  bonhommeNode.className = `bonhomme ${determinerClasseBonhomme(pourcentageValidation, aDesVotes)}`;
+
+  if (!aDesVotes) {
+    detailNode.textContent = t("validationSansVote");
+    return;
+  }
+    // Le detail affiche le nombre de votes positifs, negatifs, le total de votes et d'horoscopes generes, ainsi que le taux de participation
+  const detailPrincipal = t("validationDetail", {
+    valides: stats.total_valides,
+    invalides: stats.total_invalides,
+    votes: stats.total_avec_vote,
+    total: stats.total_horoscopes,
+  });
+
+  const detailParticipation = t("validationPart", {
+    part: Number(stats?.pourcentage_participation || 0).toFixed(1),
+  });
+
+  detailNode.textContent = `${detailPrincipal} | ${detailParticipation}`;
+}
+// Chargement des statistiques de validation depuis le backend et rendu dans le dashboard
+async function loadValidationStats() {
+  const stats = await requestJSON("/api/horoscopes/stats/validation");
+  statistiquesValidationCourantes = stats;
+  renderValidationStats(stats);
+}
 
 // ---------- Vote ----------
 
@@ -46,8 +101,9 @@ async function submitVote(horoscopeId, vote) {
   try {
     await requestJSON(`/api/horoscopes/${horoscopeId}/vote`, "POST", { vote });
     showMessage(t("voteReussi"), "success");
-    // Rechargement de l'historique pour mettre a jour l'affichage du vote.
+    // Rechargement de l'historique pour mettre a jour l'affichage du vote et des statistiques de validation pour prendre en compte le nouveau vote
     await loadHistory();
+    await loadValidationStats();
   } catch (error) {
     showMessage(error.message || t("voteEchoue"), "error");
   }
@@ -67,7 +123,7 @@ function buildHistoryItem(horoscope) {
   const top = document.createElement("div");
   top.className = "history-item-top";
   const sign = document.createElement("strong");
-  sign.textContent = horoscope.sign;
+  sign.textContent = translateSignLabel(horoscope.sign);
   const dateSpan = document.createElement("span");
   dateSpan.textContent = formatDateLabel(horoscope.date);
   top.append(sign, dateSpan);
@@ -94,7 +150,7 @@ function renderCurrentHoroscope(horoscope) {
 
   currentHoroscopeId = horoscope._id;
   meta.textContent = t("metaQuotidien", {
-    sign: horoscope.sign,
+    sign: translateSignLabel(horoscope.sign),
     date: formatDateLabel(horoscope.date),
     rating: horoscope.overall_rating ?? t("noteNonDisponible"),
   });
@@ -140,6 +196,7 @@ async function generateHoroscope() {
 
     renderCurrentHoroscope(result);
     await loadHistory();
+    await loadValidationStats();
 
     // 200 = horoscope deja consulte aujourd'hui, 201 = nouvellement genere.
     if (result._alreadyToday) {
@@ -198,6 +255,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   try {
     await loadHistory();
+    await loadValidationStats();
   } catch (_error) {
     showMessage(t("erreurChargementHistorique"), "error");
   }
@@ -208,6 +266,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     try {
       await loadHistory();
+      if (statistiquesValidationCourantes) {
+        // Le re-render applique les libelles dans la langue active
+        renderValidationStats(statistiquesValidationCourantes);
+      }
     } catch (_error) {
       showMessage(t("erreurChargementHistorique"), "error");
     }

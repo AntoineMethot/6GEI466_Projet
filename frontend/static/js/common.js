@@ -27,6 +27,11 @@ const I18N = {
     boutonGenerer: "Generer un nouvel horoscope",
     boutonGenererLoading: "Generation en cours...",
     titreHistorique: "Historique des horoscopes",
+    titreValidation: "Taux de validation",
+    sousTitreValidation: "Base sur tous les horoscopes votes.",
+    validationSansVote: "Aucun vote valide pour le moment.",
+    validationDetail: "{valides} valides - {invalides} invalides - {votes} votes sur {total} horoscopes",
+    validationPart: "Participation: {part}%",
     historiqueVide: "Aucun historique pour le moment.",
     lienRetour: "Retour",
     metaDetailChargement: "Chargement...",
@@ -93,6 +98,11 @@ const I18N = {
     boutonGenerer: "Generate new horoscope",
     boutonGenererLoading: "Generating...",
     titreHistorique: "Horoscope history",
+    titreValidation: "Validation rate",
+    sousTitreValidation: "Based on all voted horoscopes.",
+    validationSansVote: "No eligible votes yet.",
+    validationDetail: "{valides} accurate - {invalides} inaccurate - {votes} votes out of {total} horoscopes",
+    validationPart: "Participation: {part}%",
     historiqueVide: "No history yet.",
     lienRetour: "Back",
     metaDetailChargement: "Loading...",
@@ -254,6 +264,27 @@ function formatDateLabel(dateIso) {
     month: "long",
     day: "numeric",
   });
+}
+
+function translateSignLabel(sign) {
+  const signs = {
+    aries: { fr: "Belier", en: "Aries" },
+    taurus: { fr: "Taureau", en: "Taurus" },
+    gemini: { fr: "Gemeaux", en: "Gemini" },
+    cancer: { fr: "Cancer", en: "Cancer" },
+    leo: { fr: "Lion", en: "Leo" },
+    virgo: { fr: "Vierge", en: "Virgo" },
+    libra: { fr: "Balance", en: "Libra" },
+    scorpio: { fr: "Scorpion", en: "Scorpio" },
+    sagittarius: { fr: "Sagittaire", en: "Sagittarius" },
+    capricorn: { fr: "Capricorne", en: "Capricorn" },
+    aquarius: { fr: "Verseau", en: "Aquarius" },
+    pisces: { fr: "Poissons", en: "Pisces" },
+  };
+
+  const key = String(sign || "").toLowerCase();
+  const language = getLanguage();
+  return (signs[key] && signs[key][language]) || sign || "";
 }
 
 document.addEventListener("DOMContentLoaded", () => {

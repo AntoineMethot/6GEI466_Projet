@@ -79,7 +79,7 @@ function renderVote(horoscope) {
 
 async function loadHoroscopeDetail() {
   const horoscope = await requestJSON(`/api/horoscopes/${window.HOROSCOPE_ID}`);
-  document.getElementById("detail-meta").textContent = `${horoscope.sign} - ${formatDateLabel(horoscope.date)}`;
+  document.getElementById("detail-meta").textContent = `${translateSignLabel(horoscope.sign)} - ${formatDateLabel(horoscope.date)}`;//Affichage du signe et de la date de l'horoscope
   document.getElementById("detail-content").textContent = horoscope.content || t("aucunContenu");
   renderVote(horoscope);
 }
